@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String        @id @default(cuid())
+  aadhaarHash     String?       @unique
+  name            String
+  email           String?       @unique
+  mobile          String?
+  panNumber       String?
+  lgdDistrictCode String?
+  lgdStateCode    String?
+  casteCategory   String?
+  role            String        @default("CITIZEN")
+  image           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  applications    Application[]
+  consentLogs     ConsentLog[]
+  auditLogs       AuditLog[]
+}
+
+model Application {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  schemeId        String
+  schemeName      String
+  status          String    @default("PENDING")
+  eligibilityData String    @default("{}")
+  consentId       String
+  applicationRef  String    @unique
+  amount          Int?
+  rejectionReasons String @default("[]")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model ConsentLog {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  purposeCode  String
+  dataSources  String    @default("[]")
+  grantedAt    DateTime  @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  isActive     Boolean   @default(true)
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id])
+  action       String
+  apiSource    String?
+  responseCode Int
+  durationMs   Int
+  metadata     String?
+  ipAddress    String?
+  timestamp    DateTime @default(now())
+}
+
+model LgdDistrict {
+  code            String  @id
+  name            String
+  stateCode       String
+  stateName       String
+  subDistrictCode String?
+}

@@ -1,0 +1,82 @@
+{
+  "nav": {
+    "home": "Home",
+    "about": "About",
+    "dashboard": "Dashboard",
+    "scholarship": "Scholarship",
+    "login": "Login",
+    "logout": "Logout"
+  },
+  "hero": {
+    "title": "CivicPulse",
+    "subtitle": "Sarkari Kaam, Ab 3 Second Mein",
+    "description": "Zero-Touch, Life-Event driven citizen service portal. Instead of uploading PDFs to multiple government portals, CivicPulse connects directly to government APIs and fetches, verifies, and processes all data automatically.",
+    "cta_primary": "Apply for a Service",
+    "cta_secondary": "See How It Works",
+    "team": "Built by Team UrbanIQ for 1.4 billion citizens"
+  },
+  "stats": {
+    "total_scholarships": "Total Scholarships Disbursed This Year",
+    "students_benefited": "Students Benefited in 2026",
+    "old_processing": "Average Old Processing Time",
+    "new_processing": "CivicPulse Processing Time",
+    "days": "Days",
+    "seconds": "Seconds"
+  },
+  "life_events": {
+    "title": "Services Available",
+    "subtitle": "Zero Document Upload Required",
+    "scholarship": "Higher Education Scholarship",
+    "birth": "Child Birth Registration",
+    "business": "MSME / Business Registration",
+    "farmer": "Farmer Support (PM-KISAN)",
+    "pension": "Senior Citizen Pension",
+    "disability": "Disability Certificate"
+  },
+  "how_it_works": {
+    "title": "How CivicPulse Works",
+    "step1": "Login Once",
+    "step1_desc": "Verify identity via MeriPehchan",
+    "step2": "Give Consent",
+    "step2_desc": "Authorize under DPDP Act 2023",
+    "step3": "We Fetch",
+    "step3_desc": "Automatic government API calls",
+    "step4": "Auto Verify",
+    "step4_desc": "Cross-department verification",
+    "step5": "Instant Approval",
+    "step5_desc": "DBT to your bank account"
+  },
+  "scholarship": {
+    "title": "Higher Education Scholarship",
+    "step1_title": "Your Identity",
+    "step2_title": "Live Data Fetching",
+    "step3_title": "Eligibility Decision",
+    "step4_title": "Confirmation",
+    "pan_label": "PAN Number (for income verification)",
+    "aadhaar_label": "DigiLocker-linked Aadhaar",
+    "bank_label": "Bank Account Number",
+    "ifsc_label": "IFSC Code",
+    "verified_by": "Verified by MeriPehchan ✓",
+    "consent_title": "Data Sharing Consent",
+    "authorize": "Authorize & Continue",
+    "downloading": "Generating receipt...",
+    "download_receipt": "Download Receipt (PDF)",
+    "track": "Track Application",
+    "apply_another": "Apply for Another Service"
+  },
+  "dashboard": {
+    "greeting": "Namaste, {{name}}! Your identity is already verified.",
+    "my_applications": "My Applications",
+    "eligible_for": "You May Be Eligible For",
+    "district_analytics": "District-wise Scholarship Disbursements",
+    "data_access_log": "My Data Access Log"
+  },
+  "about": {
+    "title": "About CivicPulse",
+    "problem_title": "The Problem",
+    "solution_title": "Our Solution"
+  },
+  "footer": {
+    "copyright": "© 2026 CivicPulse by UrbanIQ. Open source under MIT License."
+  }
+}
