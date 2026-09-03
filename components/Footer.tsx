@@ -27,6 +27,9 @@ export default function Footer() {
               <li><a href="/services/scholarship" className="hover:text-white transition-colors">Scholarship</a></li>
               <li><a href="/services/birth-registration" className="hover:text-white transition-colors">Birth Registration</a></li>
               <li><a href="/services/business" className="hover:text-white transition-colors">Business Registration</a></li>
+              <li><a href="/services/farmer-support" className="hover:text-white transition-colors">Farmer Support</a></li>
+              <li><a href="/services/senior-citizen-pension" className="hover:text-white transition-colors">Senior Citizen Pension</a></li>
+              <li><a href="/services/disability-certificate" className="hover:text-white transition-colors">Disability Certificate</a></li>
             </ul>
           </div>
 
@@ -37,6 +40,8 @@ export default function Footer() {
               <li><span className="text-saffron">DigiLocker</span> — MeitY</li>
               <li><span className="text-saffron">LGD</span> — MoPR</li>
               <li><span className="text-saffron">PFMS</span> — MoF</li>
+              <li><span className="text-saffron">Razorpay</span> — NPCI</li>
+              <li><span className="text-saffron">Aadhaar</span> — UIDAI</li>
             </ul>
           </div>
         </div>
