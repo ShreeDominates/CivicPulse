@@ -47,18 +47,27 @@ export default function AdminDashboardPage() {
       const params = new URLSearchParams({ page: String(page), limit: "10" });
       if (statusFilter) params.set("status", statusFilter);
       const res = await fetch(`/api/admin/applications?${params}`);
-      const data = await res.json();
-      setApplications(data.applications || []);
-      setPagination(data.pagination || { page: 1, total: 0, pages: 0 });
-    } catch {}
+      if (!res.ok) {
+        setApplications([]);
+        setPagination({ page: 1, total: 0, pages: 0 });
+      } else {
+        const data = await res.json();
+        setApplications(data.applications || []);
+        setPagination(data.pagination || { page: 1, total: 0, pages: 0 });
+      }
+    } catch {
+      setApplications([]);
+    }
     setLoading(false);
   };
 
   const loadApiHealth = async () => {
     try {
       const res = await fetch("/api/admin/api-health");
-      const data = await res.json();
-      setApiHealth(data.apis || []);
+      if (res.ok) {
+        const data = await res.json();
+        setApiHealth(data.apis || []);
+      }
     } catch {}
   };
 

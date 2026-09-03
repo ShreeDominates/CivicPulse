@@ -31,11 +31,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user?.id) return;
-    Promise.all([
-      fetch("/api/applications").then((r) => r.json()),
-      fetch("/api/stats/district-map").then((r) => r.json()),
+    Promise.allSettled([
+      fetch("/api/applications").then((r) => r.ok ? r.json() : { applications: [] }),
+      fetch("/api/stats/district-map").then((r) => r.ok ? r.json() : { districts: [] }),
     ])
-      .then(([appData, district]) => {
+      .then(([appResult, districtResult]) => {
+        const appData = appResult.status === "fulfilled" ? appResult.value : { applications: [] };
+        const district = districtResult.status === "fulfilled" ? districtResult.value : { districts: [] };
         setApplications(appData.applications || []);
         setDistrictData(district.districts || []);
       })
