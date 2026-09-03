@@ -60,9 +60,9 @@ export default function LandingPage() {
     { icon: GraduationCap, title: t("life_events.scholarship"), href: "/services/scholarship", color: "#1C5AA0" },
     { icon: Baby, title: t("life_events.birth"), href: "/services/birth-registration", color: "#EB7820" },
     { icon: Building2, title: t("life_events.business"), href: "/services/business", color: "#22964A" },
-    { icon: Leaf, title: t("life_events.farmer"), href: "#", color: "#16A34A" },
-    { icon: Users, title: t("life_events.pension"), href: "#", color: "#7C3AED" },
-    { icon: Heart, title: t("life_events.disability"), href: "#", color: "#DC2626" },
+    { icon: Leaf, title: t("life_events.farmer"), href: "/services/farmer-support", color: "#16A34A" },
+    { icon: Users, title: t("life_events.pension"), href: "/services/senior-citizen-pension", color: "#7C3AED" },
+    { icon: Heart, title: t("life_events.disability"), href: "/services/disability-certificate", color: "#DC2626" },
   ];
 
   const steps = [
