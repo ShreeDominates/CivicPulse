@@ -21,15 +21,15 @@ model User {
   image           String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
-  applications    Application[] @relation("UserApplications", onDelete: Cascade)
-  consentLogs     ConsentLog[]  @relation("UserConsents", onDelete: Cascade)
-  auditLogs       AuditLog[]    @relation("UserAuditLogs", onDelete: Cascade)
+  applications    Application[]
+  consentLogs     ConsentLog[]
+  auditLogs       AuditLog[]
 }
 
 model Application {
   id              String    @id @default(cuid())
   userId          String
-  user            User      @relation("UserApplications", fields: [userId], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   schemeId        String
   schemeName      String
   status          String    @default("PENDING")
@@ -45,7 +45,7 @@ model Application {
 model ConsentLog {
   id           String    @id @default(cuid())
   userId       String
-  user         User      @relation("UserConsents", fields: [userId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   purposeCode  String
   dataSources  String    @default("[]")
   grantedAt    DateTime  @default(now())
@@ -57,7 +57,7 @@ model ConsentLog {
 model AuditLog {
   id           String   @id @default(cuid())
   userId       String?
-  user         User?    @relation("UserAuditLogs", fields: [userId], references: [id], onDelete: Cascade)
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   action       String
   apiSource    String?
   responseCode Int
