@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { withAuth } from "@/lib/middleware/withAuth";
 import { evaluateScholarshipEligibility } from "@/lib/eligibility/scholarship";
+import {
+  incomeAdapter,
+  marksAdapter,
+  bankAdapter,
+  casteAdapter,
+  lgdAdapter,
+} from "@/lib/govapi";
+import { ApplicationLifecycleEngine } from "@/lib/lifecycle/applicationLifecycle";
+import { auditService } from "@/lib/lifecycle/auditService";
+import { AnomalyIntelligenceEngine } from "@/lib/intelligence/anomalyEngine";
 
 // Safe prisma import
 let prisma: any = null;
@@ -22,17 +32,6 @@ function generateRef(): string {
   for (let i = 0; i < 6; i++) ref += chars[Math.floor(Math.random() * chars.length)];
   return ref;
 }
-
-const MOCK_CASTE = {
-  category: "OBC",
-  certificateId: "MH/CST/2024/887123",
-  source: "STATE_REVENUE_MOCK",
-};
-
-const MOCK_LGD: Record<string, any> = {
-  pune: { districtCode: "519", districtName: "Pune", stateCode: "27", stateName: "Maharashtra" },
-  mumbai: { districtCode: "516", districtName: "Mumbai", stateCode: "27", stateName: "Maharashtra" },
-};
 
 export const POST = withAuth(async (req: NextRequest, session: any) => {
   const start = Date.now();
@@ -70,84 +69,142 @@ export const POST = withAuth(async (req: NextRequest, session: any) => {
   }
 
   try {
-    const isMock = process.env.USE_MOCK_APIS === "true";
+    const adapterContext = {
+      userId: session.user.id,
+      actorHash: session.user?.aadhaarHash,
+      consentId: parsed.data.consentId,
+      endpoint: "/api/applications/scholarship",
+    };
 
-    // Fetch all data in parallel
-    const [incomeRes, marksRes, bankRes] = await Promise.all([
-      isMock
-        ? Promise.resolve({
-            annualIncome: 160000,
-            holderName: session.user.name,
-            source: "INCOME_TAX_DEPT_MOCK",
-            digitallyVerified: true,
-          })
-        : fetch(`${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/gov/fetch-income`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pan: parsed.data.pan, consentId: parsed.data.consentId }),
-          }).then((r) => r.json()),
+    // Authoritative B3 Provider Pipeline: Fetch all data via official adapters
+    const [incomeRes, marksRes, bankRes, casteRes, lgdRes] = await Promise.all([
+      incomeAdapter
+        .execute({ pan: parsed.data.pan }, adapterContext)
+        .then((res) => ({
+          ...res,
+          ...res.data,
+          annualIncome: res.data?.annualIncome ?? 0,
+          holderName: res.data?.holderName ?? session.user.name,
+          source: res.data?.source ?? "INCOME_TAX_DEPT",
+          digitallyVerified: res.success,
+        })),
 
-      isMock
-        ? Promise.resolve({
-            percentage: 87.4,
-            rollNumber: "23456789",
-            studentName: session.user.name,
-            source: "CBSE_DIGILOCKER_MOCK",
-            digitalSignatureValid: true,
-          })
-        : fetch(`${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/gov/fetch-marks`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ rollNumber: "23456789", year: 2025, consentId: parsed.data.consentId }),
-          }).then((r) => r.json()),
+      marksAdapter
+        .execute(
+          { rollNumber: "23456789", year: 2025, studentName: session.user.name },
+          adapterContext
+        )
+        .then((res) => ({
+          ...res,
+          ...res.data,
+          percentage: res.data?.percentage ?? 0,
+          rollNumber: res.data?.rollNumber ?? "23456789",
+          studentName: res.data?.studentName ?? session.user.name,
+          source: res.data?.source ?? "CBSE_DIGILOCKER",
+          digitalSignatureValid: res.data?.digitalSignatureValid ?? false,
+        })),
 
-      isMock
-        ? Promise.resolve({
-            valid: true,
-            registeredName: session.user.name,
-            bankName: "State Bank of India",
+      bankAdapter
+        .execute(
+          {
+            accountNumber: parsed.data.bankAccount,
             ifsc: parsed.data.bankIfsc,
-            accountLast4: parsed.data.bankAccount.slice(-4),
-          })
-        : fetch(`${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/gov/validate-bank`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              accountNumber: parsed.data.bankAccount,
-              ifsc: parsed.data.bankIfsc,
-              name: session.user.name,
-              consentId: parsed.data.consentId,
-            }),
-          }).then((r) => r.json()),
+            name: session.user.name,
+          },
+          adapterContext
+        )
+        .then((res) => ({
+          ...res,
+          ...res.data,
+          valid: res.data?.valid ?? false,
+          registeredName: res.data?.registeredName ?? session.user.name,
+          bankName: res.data?.bankName ?? "State Bank of India",
+          ifsc: parsed.data.bankIfsc,
+          accountLast4: parsed.data.bankAccount.slice(-4),
+        })),
+
+      casteAdapter
+        .execute(
+          {
+            certificateId: "MH/CST/2024/887123",
+            category: "OBC",
+          },
+          adapterContext
+        )
+        .then((res) => ({
+          ...res,
+          ...res.data,
+          category: res.data?.category ?? "OBC",
+          certificateId: res.data?.certificateId ?? "MH/CST/2024/887123",
+          source: res.data?.source ?? "STATE_REVENUE_PORTAL",
+        })),
+
+      lgdAdapter
+        .execute(
+          {
+            name: parsed.data.districtName,
+            state: "maharashtra",
+          },
+          adapterContext
+        )
+        .then((res) => ({
+          ...res,
+          ...res.data,
+          districtCode: res.data?.districtCode ?? "",
+          districtName: res.data?.districtName ?? parsed.data.districtName,
+          stateCode: res.data?.stateCode ?? "",
+          stateName: res.data?.stateName ?? "",
+          found: res.data?.found ?? false,
+        })),
     ]);
 
-    const lgdData = MOCK_LGD[parsed.data.districtName.toLowerCase()] || MOCK_LGD.pune;
-    const casteData = MOCK_CASTE;
+    // Authoritative B4 Evaluation: Normalized facts + Versioned Rule Engine
+    const result = evaluateScholarshipEligibility(
+      incomeRes,
+      marksRes,
+      casteRes,
+      lgdRes,
+      bankRes,
+      {
+        id: session.user.id,
+        name: session.user.name,
+        aadhaarHash: session.user?.aadhaarHash,
+        claimedPan: parsed.data.pan,
+        claimedDistrict: parsed.data.districtName,
+      }
+    );
 
-    // Run eligibility engine
-    const result = evaluateScholarshipEligibility(incomeRes, marksRes, casteData, lgdData, bankRes);
+    // B7 Anomaly & Integrity Intelligence (Deterministic, Non-Overriding)
+    const intelligence = result.normalizedFacts
+      ? AnomalyIntelligenceEngine.analyze(result.normalizedFacts)
+      : null;
 
     const applicationRef = generateRef();
 
-    // Try to save application — but always return the result
+    // Map application status from authoritative B4 decision
     let applicationId = `app-${Date.now()}`;
-    let applicationStatus = result.approved ? "APPROVED" : "REJECTED";
+    let applicationStatus = result.approved ? "APPROVED" : (result.status === "INCOMPLETE" ? "PENDING" : "REJECTED");
 
     if (prisma) {
       try {
         const application = await prisma.application.create({
           data: {
             userId: session.user.id,
-            schemeId: "SCH-HED-2026",
-            schemeName: "Higher Education Scholarship 2026",
+            schemeId: result.ruleSet.schemeId,
+            schemeName: result.ruleSet.schemeName,
             status: applicationStatus,
             eligibilityData: JSON.stringify({
-              income: incomeRes,
-              marks: marksRes,
-              caste: casteData,
-              lgd: lgdData,
-              bank: bankRes,
+              decision: result.status,
+              approved: result.approved,
+              ruleSet: result.ruleSet,
+              evaluatedAt: result.evaluatedAt,
+              summary: result.summary,
+              rules: result.rules,
+              crossSourceChecks: result.crossSourceChecks,
+              provenanceSummary: result.provenanceSummary,
               criteria: result.criteria,
+              facts: result.normalizedFacts,
+              intelligence,
             }),
             consentId: parsed.data.consentId,
             applicationRef,
@@ -157,21 +214,87 @@ export const POST = withAuth(async (req: NextRequest, session: any) => {
         });
         applicationId = application.id;
 
-        // Audit log (fire and forget)
+        // Layer 1 Audit log
         prisma.auditLog.create({
           data: {
             userId: session.user.id,
+            actorHash: session.user?.aadhaarHash,
             action: "SCHOLARSHIP_APPLICATION",
-            apiSource: "ORCHESTRATOR",
+            apiSource: "CIVICPULSE_ENGINE",
+            endpoint: "/api/applications/scholarship",
             responseCode: 200,
             durationMs: Date.now() - start,
-            metadata: JSON.stringify({ applicationRef, approved: result.approved }),
+            metadata: JSON.stringify({
+              applicationRef,
+              decision: result.status,
+              approved: result.approved,
+              ruleSetId: result.ruleSet.ruleSetId,
+              ruleSetVersion: result.ruleSet.ruleSetVersion,
+            }),
           },
         }).catch(() => {});
       } catch (dbErr) {
         console.warn("[CivicPulse] DB unavailable for application save, using in-memory result");
       }
     }
+
+    // Register with Authoritative Lifecycle Engine
+    ApplicationLifecycleEngine.registerApplication({
+      id: applicationId,
+      userId: session.user.id,
+      schemeId: result.ruleSet.schemeId,
+      schemeName: result.ruleSet.schemeName,
+      status: applicationStatus as any,
+      eligibilityData: JSON.stringify({
+        decision: result.status,
+        approved: result.approved,
+        ruleSet: result.ruleSet,
+        evaluatedAt: result.evaluatedAt,
+        summary: result.summary,
+        rules: result.rules,
+        crossSourceChecks: result.crossSourceChecks,
+        provenanceSummary: result.provenanceSummary,
+        criteria: result.criteria,
+        facts: result.normalizedFacts,
+        intelligence,
+      }),
+      consentId: parsed.data.consentId,
+      applicationRef,
+      amount: result.scholarshipAmount,
+      rejectionReasons: JSON.stringify(result.rejectionReasons),
+      disbursementStatus: "NOT_INITIATED",
+      beneficiaryName: session.user.name,
+      accountNumber: parsed.data.bankAccount,
+      ifsc: parsed.data.bankIfsc,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Record Lifecycle Audit Event
+    await auditService.recordEvent({
+      applicationId,
+      applicationRef,
+      previousStatus: "DRAFT",
+      newStatus: applicationStatus as any,
+      action: "APPLICATION_SUBMITTED",
+      actorHash: session.user?.aadhaarHash,
+      actorRole: "CITIZEN",
+      correlationId: applicationRef,
+      details: {
+        schemeId: result.ruleSet.schemeId,
+        amount: result.scholarshipAmount,
+        decision: result.status,
+        approved: result.approved,
+        ruleSetId: result.ruleSet.ruleSetId,
+        ruleSetVersion: result.ruleSet.ruleSetVersion,
+        intelligenceSummary: intelligence?.summary,
+        riskLevel: intelligence?.riskLevel,
+      },
+      provenance: {
+        source: "CIVICPULSE_ENGINE",
+        mode: "SIMULATED",
+      },
+    });
 
     return NextResponse.json({
       success: true,
@@ -180,14 +303,16 @@ export const POST = withAuth(async (req: NextRequest, session: any) => {
         ref: applicationRef,
         status: applicationStatus,
         amount: result.scholarshipAmount,
-        schemeName: "Higher Education Scholarship 2026",
+        schemeName: result.ruleSet.schemeName,
+        ruleSetVersion: result.ruleSet.ruleSetVersion,
       },
       eligibility: result,
+      intelligence,
       fetchResults: {
         income: incomeRes,
         marks: marksRes,
-        caste: casteData,
-        lgd: lgdData,
+        caste: casteRes,
+        lgd: lgdRes,
         bank: bankRes,
       },
     });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { withAuth } from "@/lib/middleware/withAuth";
 import { checkRateLimit } from "@/lib/ratelimit";
+import { incomeAdapter } from "@/lib/govapi/adapters/incomeAdapter";
 
 let prisma: any = null;
 try { prisma = require("@/lib/prisma").prisma; } catch {}
@@ -41,40 +42,80 @@ export const POST = withAuth(async (req: NextRequest, session: any) => {
     if (!consent.valid) return consent.error!;
   }
 
+  const actorHash = session.user?.aadhaarHash || undefined;
+
   try {
-    let data;
-    if (process.env.USE_MOCK_APIS === "true") {
-      data = {
-        source: "INCOME_TAX_DEPT_MOCK",
-        pan: parsed.data.pan,
-        holderName: session.user.name,
-        assessmentYear: "2025-26",
-        annualIncome: 160000,
-        taxFiled: true,
-        digitallyVerified: true,
-        verifiedAt: new Date().toISOString(),
-      };
-    } else {
-      const response = await fetch(
-        `https://api.apisetu.gov.in/certificate/v3/itrtrace?pAN=${parsed.data.pan}`,
-        { headers: { "X-APISETU-APIKEY": process.env.APISETU_API_KEY || "" } }
+    const result = await incomeAdapter.execute(
+      { pan: parsed.data.pan, holderName: session.user?.name },
+      {
+        userId: session.user.id,
+        actorHash,
+        consentId: parsed.data.consentId,
+        endpoint: "/api/gov/fetch-income",
+        ipAddress: ip,
+      }
+    );
+
+    if (!result.success) {
+      const statusCode = result.error?.upstreamStatusCode || 502;
+      await safeAudit({
+        userId: session.user.id,
+        actorHash,
+        action: "INCOME_FETCH_FAILED",
+        apiSource: result.provenance.sourceId,
+        endpoint: "/api/gov/fetch-income",
+        responseCode: statusCode,
+        durationMs: Date.now() - start,
+        metadata: JSON.stringify({
+          pan: parsed.data.pan.slice(0, 2) + "*****" + parsed.data.pan.slice(-2),
+          errorCode: result.error?.code,
+          error: result.error?.message,
+        }),
+        ipAddress: ip,
+      });
+      return NextResponse.json(
+        {
+          error: result.error?.message || "Failed to fetch income data",
+          code: result.error?.code,
+          details: result.error,
+          ...result,
+        },
+        { status: statusCode }
       );
-      if (!response.ok) throw new Error(`API Setu returned ${response.status}`);
-      data = await response.json();
     }
 
     await safeAudit({
-      userId: session.user.id, action: "INCOME_FETCH", apiSource: "API_SETU_ITR",
-      responseCode: 200, durationMs: Date.now() - start,
-      metadata: JSON.stringify({ pan: parsed.data.pan }), ipAddress: ip,
+      userId: session.user.id,
+      actorHash,
+      action: "INCOME_FETCH",
+      apiSource: result.provenance.sourceId,
+      endpoint: "/api/gov/fetch-income",
+      responseCode: 200,
+      durationMs: Date.now() - start,
+      metadata: JSON.stringify({
+        pan: parsed.data.pan.slice(0, 2) + "*****" + parsed.data.pan.slice(-2),
+        requestId: result.provenance.requestId,
+        verificationStatus: result.verificationStatus,
+      }),
+      ipAddress: ip,
     });
 
-    return NextResponse.json(data);
+    // Return canonical adapter result with domain data spread for backward compatibility
+    return NextResponse.json({
+      ...result,
+      ...result.data,
+    });
   } catch (error: any) {
     await safeAudit({
-      userId: session.user.id, action: "INCOME_FETCH_FAILED", apiSource: "API_SETU_ITR",
-      responseCode: 500, durationMs: Date.now() - start,
-      metadata: JSON.stringify({ error: error.message }), ipAddress: ip,
+      userId: session.user.id,
+      actorHash,
+      action: "INCOME_FETCH_FAILED",
+      apiSource: "INCOME_TAX_DEPT_APISETU",
+      endpoint: "/api/gov/fetch-income",
+      responseCode: 500,
+      durationMs: Date.now() - start,
+      metadata: JSON.stringify({ error: error.message }),
+      ipAddress: ip,
     });
     return NextResponse.json({ error: "Failed to fetch income data", details: error.message }, { status: 502 });
   }

@@ -1,24 +1,26 @@
 import { NextResponse } from "next/server";
+import { lgdAdapter } from "@/lib/govapi/adapters/lgdAdapter";
 
+/**
+ * @deprecated Legacy mock route preserved for backward compatibility.
+ * Authoritative path is /api/gov/lgd-lookup.
+ * Delegates to official lgdAdapter to ensure canonical provenance.
+ */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const name = searchParams.get("name") || "pune";
+  const state = searchParams.get("state") || "maharashtra";
 
-  const districts: Record<string, any> = {
-    pune: { found: true, districtCode: "519", districtName: "Pune", stateCode: "27", stateName: "Maharashtra" },
-    mumbai: { found: true, districtCode: "516", districtName: "Mumbai", stateCode: "27", stateName: "Maharashtra" },
-    nagpur: { found: true, districtCode: "525", districtName: "Nagpur", stateCode: "27", stateName: "Maharashtra" },
-    delhi: { found: true, districtCode: "75", districtName: "Central Delhi", stateCode: "10", stateName: "Delhi" },
-    bangalore: { found: true, districtCode: "572", districtName: "Bangalore Urban", stateCode: "15", stateName: "Karnataka" },
-  };
+  const result = await lgdAdapter.execute(
+    { name, state },
+    { endpoint: "/api/mock/gov/lgd-lookup" }
+  );
 
-  const result = districts[name.toLowerCase()] || {
-    found: true,
-    districtCode: "519",
-    districtName: name.charAt(0).toUpperCase() + name.slice(1),
-    stateCode: "27",
-    stateName: "Maharashtra",
-  };
-
-  return NextResponse.json(result);
+  return NextResponse.json(
+    { ...result, ...result.data },
+    {
+      status: result.success ? 200 : (result.error?.upstreamStatusCode || 502),
+      headers: { "x-civicpulse-deprecated": "Use /api/gov/lgd-lookup instead" },
+    }
+  );
 }

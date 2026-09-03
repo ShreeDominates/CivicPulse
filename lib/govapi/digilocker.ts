@@ -1,9 +1,27 @@
-import { XMLParser } from "fast-xml-parser";
+/**
+ * @deprecated LEGACY THEORETICAL TRANSPORT STUB — NOT USED IN B3 AUTHORITATIVE PATH.
+ *
+ * SAFETY DISCLOSURE (SIH AUDIT):
+ * 1. DigiLocker Requester API requires 3-legged citizen OAuth authorization; it does
+ *    not permit automated 2-legged client_credentials access to citizen educational records.
+ * 2. The URL endpoint below is a theoretical stub, not a verified CBSE endpoint.
+ * 3. Checking `signature.length > 0` is NOT cryptographic verification. Actual X.509
+ *    PKI digital signature verification is explicitly: NOT IMPLEMENTED.
+ *
+ * All active CBSE / DigiLocker verification in CivicPulse is routed authoritatively
+ * through `MarksAdapter` and `simulateMarksVerification` in `lib/govapi/`.
+ */
+
+let XMLParser: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  XMLParser = require("fast-xml-parser").XMLParser;
+} catch {}
 
 const DIGILOCKER_TOKEN_URL =
   "https://digilocker.meripehchan.gov.in/public/oauth2/1/token";
 
-interface DigiLockerMarksResponse {
+export interface DigiLockerMarksResponse {
   source: string;
   rollNumber: string;
   studentName: string;

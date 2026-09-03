@@ -73,7 +73,7 @@ A student applies for a Higher Education Scholarship. CivicPulse automatically:
 | **Bhashini** | MeitY | Hindi/regional translation | 🔄 Planned |
 | **Aadhaar / MeriPehchan** | UIDAI | Identity verification | ✅ Mock (OTP flow ready) |
 
-> **Note:** All government API integrations use mock mode by default (`USE_MOCK_APIS=true`). Set to `false` and provide real API keys for production use. Mock responses use the same JSON schema as real APIs.
+> **Note:** CivicPulse implements a decoupled Government Data Gateway architecture. For demonstration and sandbox testing, local high-fidelity simulators model documented government provider behavior (CBDT/ITR, CBSE/DigiLocker, IMPS Penny-Drop, State Revenue, and LGD). Production connectivity requires authorized departmental gateway onboarding and PKI credentials.
 
 ---
 
@@ -347,7 +347,7 @@ npm run dev
 > "Aadhaar numbers are SHA-256 hashed on receipt — never stored raw. Every data fetch requires explicit DPDP Act 2023 consent with expiry. Full audit trail of who accessed what data when. Citizens can revoke consent at any time."
 
 **Q: What is actually implemented vs proposed?**
-> "The full scholarship flow is end-to-end functional with mock government APIs. The mock layer uses the same JSON schema as real APIs. Switching to production requires only setting `USE_MOCK_APIS=false` and adding API keys. The architecture, consent system, audit trail, and eligibility engine are all production-ready."
+> "The full scholarship flow is end-to-end functional through the CivicPulse Government Data Gateway. It features high-fidelity local simulations based on authoritative, documented provider specifications (API Setu ITR, DigiLocker/CBSE academic records, IMPS penny-drop, and LGD). The adapter contracts, consent architecture, SHA-256 audit logging, and rules engine are fully implemented, and clearly separate simulated environments from live government credentials."
 
 ---
 

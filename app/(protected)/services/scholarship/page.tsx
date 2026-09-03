@@ -107,15 +107,26 @@ export default function ScholarshipPage() {
     };
 
     const fetchCaste = async () => {
-      // Simulated - in production, call API Setu
-      await new Promise((r) => setTimeout(r, 800));
-      const data = { category: "OBC", certificateId: "MH/CST/2024/887123", source: "State Revenue Portal" };
-      store.setCasteData(data);
-      store.updateTaskStatus(
-        "caste", "verified",
-        `Category: ${data.category} — Certificate ${data.certificateId}`,
-        "API Setu", "#1C5AA0"
-      );
+      try {
+        const res = await fetch("/api/gov/fetch-caste", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            certificateId: "MH/CST/2024/887123",
+            category: "OBC",
+            consentId: store.consentId,
+          }),
+        });
+        const data = await res.json();
+        store.setCasteData(data);
+        store.updateTaskStatus(
+          "caste", "verified",
+          `Category: ${data.category} — Certificate ${data.certificateId}`,
+          "State Revenue", "#1C5AA0"
+        );
+      } catch {
+        store.updateTaskStatus("caste", "failed", undefined, undefined, undefined, "Failed to fetch caste certificate");
+      }
     };
 
     const fetchLGD = async () => {
@@ -180,6 +191,14 @@ export default function ScholarshipPage() {
     }
   }, [store.currentStep, store.tasks]);
 
+  const [applicationId, setApplicationId] = useState<string | null>(null);
+  const [intelligenceData, setIntelligenceData] = useState<any | null>(null);
+  const [sanctionData, setSanctionData] = useState<any | null>(null);
+  const [disbursementData, setDisbursementData] = useState<any | null>(null);
+  const [isSanctioning, setIsSanctioning] = useState(false);
+  const [timelineEvents, setTimelineEvents] = useState<any[] | null>(null);
+  const [isFetchingTimeline, setIsFetchingTimeline] = useState(false);
+
   const runEligibility = useCallback(async () => {
     setLoading(true);
     try {
@@ -192,13 +211,15 @@ export default function ScholarshipPage() {
           bankAccount: store.bankAccount || "12345678901234",
           bankIfsc: store.bankIfsc || "SBIN0001234",
           consentId: store.consentId,
-          districtName: "Pune",
+          districtName: store.lgdData?.districtName || "Pune",
         }),
       });
       const data = await res.json();
       if (data.eligibility) {
         store.setEligibilityResult(data.eligibility);
         store.setApplicationRef(data.application?.ref);
+        if (data.application?.id) setApplicationId(data.application.id);
+        if (data.intelligence) setIntelligenceData(data.intelligence);
         store.setCurrentStep(3);
 
         if (data.eligibility.approved) {
@@ -223,6 +244,47 @@ export default function ScholarshipPage() {
       setLoading(false);
     }
   }, [store]);
+
+  const handleSanctionAndDisburse = async () => {
+    if (!applicationId) return;
+    setIsSanctioning(true);
+    setError("");
+    try {
+      // 1. Sanction Order
+      const sRes = await fetch(`/api/applications/${applicationId}/sanction`, { method: "POST" });
+      const sData = await sRes.json();
+      if (!sData.success) throw new Error(sData.error || "Sanction failed");
+      setSanctionData(sData.sanctionOrder);
+
+      // 2. PFMS DBT Clearing
+      const dRes = await fetch(`/api/applications/${applicationId}/disburse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idempotencyKey: `idemp_${applicationId}_${Date.now()}` }),
+      });
+      const dData = await dRes.json();
+      if (!dData.success) throw new Error(dData.error || "Disbursement failed");
+      setDisbursementData(dData.disbursement);
+    } catch (err: any) {
+      setError(err?.message || "Failed to execute sanction and clearing");
+    } finally {
+      setIsSanctioning(false);
+    }
+  };
+
+  const handleFetchTimeline = async () => {
+    if (!applicationId) return;
+    setIsFetchingTimeline(true);
+    try {
+      const res = await fetch(`/api/applications/${applicationId}/timeline`);
+      const data = await res.json();
+      if (data.timeline) setTimelineEvents(data.timeline);
+    } catch {
+      // ignore
+    } finally {
+      setIsFetchingTimeline(false);
+    }
+  };
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -399,6 +461,7 @@ export default function ScholarshipPage() {
               criteria={store.eligibilityResult.criteria}
               scholarshipAmount={store.eligibilityResult.scholarshipAmount}
               applicationRef={store.applicationRef || undefined}
+              intelligence={intelligenceData || undefined}
             />
 
             <div className="flex gap-3">
@@ -406,13 +469,13 @@ export default function ScholarshipPage() {
                 <ArrowLeft className="mr-2 h-4 w-4" /> Back
               </Button>
               <Button onClick={() => store.setCurrentStep(4)} className="flex-1">
-                View Confirmation <ArrowRight className="ml-2 h-4 w-4" />
+                View Confirmation & Sanction <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
           </motion.div>
         )}
 
-        {/* STEP 4: Confirmation */}
+        {/* STEP 4: Confirmation, Sanction & DBT */}
         {store.currentStep === 4 && (
           <motion.div
             key="step4"
@@ -422,30 +485,113 @@ export default function ScholarshipPage() {
             className="space-y-6"
           >
             <Card className={store.eligibilityResult?.approved ? "border-success" : "border-error"}>
-              <CardContent className="pt-6 text-center">
-                <CheckCircle className={`h-16 w-16 mx-auto mb-4 ${store.eligibilityResult?.approved ? "text-success" : "text-error"}`} />
-                <h2 className="text-2xl font-bold text-navy mb-2">
-                  Application {store.eligibilityResult?.approved ? "Submitted" : "Not Eligible"}
-                </h2>
-                <p className="text-text-muted mb-4">Reference: {store.applicationRef}</p>
+              <CardContent className="pt-6 text-center space-y-4">
+                <CheckCircle className={`h-14 w-14 mx-auto ${store.eligibilityResult?.approved ? "text-success" : "text-error"}`} />
+                <div>
+                  <h2 className="text-2xl font-bold text-navy">
+                    Application {store.eligibilityResult?.approved ? "Submitted & Registered" : "Not Eligible"}
+                  </h2>
+                  <p className="text-text-muted text-sm font-mono mt-1">
+                    Application Ref: {store.applicationRef}
+                  </p>
+                </div>
 
                 {store.eligibilityResult?.approved && (
-                  <div className="bg-success/5 p-4 rounded-lg mb-4">
-                    <p className="text-success font-semibold text-lg">
-                      Scholarship Amount: ₹48,000
-                    </p>
-                    <p className="text-sm text-text-muted mt-1">
-                      Amount will be transferred to your Aadhaar-linked bank account within 24 hours via PFMS
-                    </p>
+                  <div className="space-y-4 text-left">
+                    <div className="bg-success/5 border border-success/20 p-4 rounded-xl">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-navy uppercase tracking-wider">Sanctioned Grant</span>
+                        <span className="text-2xl font-extrabold text-success">₹48,000</span>
+                      </div>
+                      <p className="text-xs text-text-muted mt-1">
+                        Disbursement Rail: Public Financial Management System (PFMS) via Aadhaar Payment Bridge (APBS).
+                      </p>
+                    </div>
+
+                    {/* Sanction & Disbursement Execution Box */}
+                    <div className="p-4 rounded-xl bg-navy-900 text-white space-y-3">
+                      <div className="flex items-center justify-between pb-2 border-b border-navy-700">
+                        <span className="text-xs font-bold uppercase tracking-wider text-saffron">
+                          PFMS Direct Benefit Clearing Engine
+                        </span>
+                        <span className="text-[10px] font-mono text-navy-300">mode: SIMULATED</span>
+                      </div>
+
+                      {disbursementData ? (
+                        <div className="space-y-2 text-xs">
+                          <div className="flex items-center justify-between text-success-light font-semibold">
+                            <span>Payment Status:</span>
+                            <span>CREDITED TO ACCOUNT ✓</span>
+                          </div>
+                          <div className="flex items-center justify-between text-navy-200 font-mono">
+                            <span>PFMS Reference:</span>
+                            <span>{disbursementData.pfmsRef}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-navy-200 font-mono">
+                            <span>Reserve Bank UTR:</span>
+                            <span>{disbursementData.utr}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-navy-300">
+                            <span>Sanction Order Ref:</span>
+                            <span className="font-mono">{sanctionData?.orderNumber}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                          <p className="text-xs text-navy-200">
+                            Ready to issue official sanction order and execute simulated DBT clearing.
+                          </p>
+                          <Button
+                            onClick={handleSanctionAndDisburse}
+                            loading={isSanctioning}
+                            className="bg-saffron hover:bg-saffron-dark text-white font-bold text-xs flex-shrink-0"
+                          >
+                            Issue Sanction & Disburse ₹48,000 →
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Timeline Action */}
+                    <div className="pt-2">
+                      <button
+                        onClick={handleFetchTimeline}
+                        disabled={isFetchingTimeline}
+                        className="text-xs text-accent font-bold hover:underline flex items-center gap-1"
+                      >
+                        {isFetchingTimeline ? "Loading Audit Trail..." : "Inspect Immutable Audit Timeline (Show Me The Receipts) →"}
+                      </button>
+
+                      {timelineEvents && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="mt-3 p-3 rounded-lg bg-background border border-card-border space-y-2"
+                        >
+                          <span className="text-[11px] font-bold text-navy block uppercase">
+                            Immutable Event Ledger ({timelineEvents.length} Events)
+                          </span>
+                          {timelineEvents.map((evt, idx) => (
+                            <div key={idx} className="p-2 rounded bg-white border border-card-border flex items-center justify-between text-[11px]">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-accent">{evt.action}</span>
+                                <span className="text-text-muted">by {evt.actor}</span>
+                              </div>
+                              <span className="font-mono text-text-muted">{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                            </div>
+                          ))}
+                        </motion.div>
+                      )}
+                    </div>
                   </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row gap-3 justify-center mt-6">
+                <div className="flex flex-col sm:flex-row gap-3 justify-center pt-4">
                   <Button onClick={() => router.push("/dashboard")} variant="secondary">
-                    Track Application
+                    Track in Citizen Dashboard
                   </Button>
                   <Button onClick={() => router.push("/")}>
-                    Apply for Another Service
+                    Return to Home
                   </Button>
                 </div>
               </CardContent>

@@ -2,18 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { withAuth } from "@/lib/middleware/withAuth";
 import { checkRateLimit } from "@/lib/ratelimit";
-import { bankAdapter } from "@/lib/govapi/adapters/bankAdapter";
+import { casteAdapter } from "@/lib/govapi/adapters/casteAdapter";
 
 let prisma: any = null;
 try { prisma = require("@/lib/prisma").prisma; } catch {}
 
 const BodySchema = z.object({
-  accountNumber: z.string().min(9).max(18),
-  ifsc: z.string().regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, "Invalid IFSC"),
-  name: z.string().min(1),
+  certificateId: z.string().min(1, "Certificate identifier required"),
+  category: z.string().optional(),
   consentId: z.string(),
 });
 
+// Safe audit log — never crashes the request
 async function safeAudit(data: any) {
   if (!prisma) return;
   try { await prisma.auditLog.create({ data }); } catch {}
@@ -40,24 +40,23 @@ export const POST = withAuth(async (req: NextRequest, session: any) => {
   // Skip consent check in mock mode
   if (process.env.USE_MOCK_APIS !== "true") {
     const { checkConsent } = require("@/lib/middleware/withConsent");
-    const consent = await checkConsent(session.user.id, "BANK_VALIDATION");
+    const consent = await checkConsent(session.user.id, "CASTE_VERIFICATION");
     if (!consent.valid) return consent.error!;
   }
 
   const actorHash = session.user?.aadhaarHash || undefined;
 
   try {
-    const result = await bankAdapter.execute(
+    const result = await casteAdapter.execute(
       {
-        accountNumber: parsed.data.accountNumber,
-        ifsc: parsed.data.ifsc,
-        name: parsed.data.name,
+        certificateId: parsed.data.certificateId,
+        category: parsed.data.category,
       },
       {
         userId: session.user.id,
         actorHash,
         consentId: parsed.data.consentId,
-        endpoint: "/api/gov/validate-bank",
+        endpoint: "/api/gov/fetch-caste",
         ipAddress: ip,
       }
     );
@@ -67,14 +66,13 @@ export const POST = withAuth(async (req: NextRequest, session: any) => {
       await safeAudit({
         userId: session.user.id,
         actorHash,
-        action: "BANK_VALIDATION_FAILED",
+        action: "CASTE_FETCH_FAILED",
         apiSource: result.provenance.sourceId,
-        endpoint: "/api/gov/validate-bank",
+        endpoint: "/api/gov/fetch-caste",
         responseCode: statusCode,
         durationMs: Date.now() - start,
         metadata: JSON.stringify({
-          ifsc: parsed.data.ifsc,
-          accountLast4: parsed.data.accountNumber.slice(-4),
+          certificateId: parsed.data.certificateId,
           errorCode: result.error?.code,
           error: result.error?.message,
         }),
@@ -82,7 +80,7 @@ export const POST = withAuth(async (req: NextRequest, session: any) => {
       });
       return NextResponse.json(
         {
-          error: result.error?.message || "Bank validation failed",
+          error: result.error?.message || "Failed to fetch caste certificate",
           code: result.error?.code,
           details: result.error,
           ...result,
@@ -94,14 +92,13 @@ export const POST = withAuth(async (req: NextRequest, session: any) => {
     await safeAudit({
       userId: session.user.id,
       actorHash,
-      action: "BANK_VALIDATION",
+      action: "CASTE_FETCH",
       apiSource: result.provenance.sourceId,
-      endpoint: "/api/gov/validate-bank",
+      endpoint: "/api/gov/fetch-caste",
       responseCode: 200,
       durationMs: Date.now() - start,
       metadata: JSON.stringify({
-        ifsc: parsed.data.ifsc,
-        accountLast4: parsed.data.accountNumber.slice(-4),
+        certificateId: parsed.data.certificateId,
         requestId: result.provenance.requestId,
         verificationStatus: result.verificationStatus,
       }),
@@ -117,14 +114,14 @@ export const POST = withAuth(async (req: NextRequest, session: any) => {
     await safeAudit({
       userId: session.user.id,
       actorHash,
-      action: "BANK_VALIDATION_FAILED",
-      apiSource: "RAZORPAY_FAV",
-      endpoint: "/api/gov/validate-bank",
+      action: "CASTE_FETCH_FAILED",
+      apiSource: "STATE_REVENUE_PORTAL",
+      endpoint: "/api/gov/fetch-caste",
       responseCode: 500,
       durationMs: Date.now() - start,
       metadata: JSON.stringify({ error: error.message }),
       ipAddress: ip,
     });
-    return NextResponse.json({ error: "Bank validation failed", details: error.message }, { status: 502 });
+    return NextResponse.json({ error: "Failed to fetch caste certificate", details: error.message }, { status: 502 });
   }
 });

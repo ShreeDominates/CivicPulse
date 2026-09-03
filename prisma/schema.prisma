@@ -27,39 +27,52 @@ model User {
 }
 
 model Application {
-  id              String    @id @default(cuid())
-  userId          String
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  schemeId        String
-  schemeName      String
-  status          String    @default("PENDING")
-  eligibilityData String    @default("{}")
-  consentId       String
-  applicationRef  String    @unique
-  amount          Int?
-  rejectionReasons String @default("[]")
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schemeId           String
+  schemeName         String
+  status             String    @default("PENDING")
+  eligibilityData    String    @default("{}")
+  consentId          String
+  applicationRef     String    @unique
+  amount             Int?
+  rejectionReasons   String    @default("[]")
+  
+  // Enhanced DBT / PFMS tracking fields (Layer 1)
+  disbursementStatus String?   @default("NOT_INITIATED")
+  pfmsRef            String?
+  sanctionOrderRef   String?
+  dbtTransferredAt   DateTime?
+  dbtFailureReason   String?
+
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 }
 
 model ConsentLog {
-  id           String    @id @default(cuid())
-  userId       String
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  purposeCode  String
-  dataSources  String    @default("[]")
-  grantedAt    DateTime  @default(now())
-  expiresAt    DateTime
-  revokedAt    DateTime?
-  isActive     Boolean   @default(true)
+  id                   String    @id @default(cuid())
+  userId               String?
+  user                 User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  schemeId             String?
+  purposeCode          String
+  purposeDescription   String?
+  dataSources          String    @default("[]")
+  authorizedOperations String?   @default("[\"READ\"]")
+  grantedAt            DateTime  @default(now())
+  expiresAt            DateTime
+  revokedAt            DateTime?
+  isActive             Boolean   @default(true)
 }
 
 model AuditLog {
   id           String   @id @default(cuid())
   userId       String?
-  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  actorHash    String?
   action       String
   apiSource    String?
+  endpoint     String?
   responseCode Int
   durationMs   Int
   metadata     String?
